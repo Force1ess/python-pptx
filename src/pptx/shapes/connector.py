@@ -8,7 +8,7 @@ elbows, or can be curved.
 from __future__ import annotations
 
 from pptx.dml.line import LineFormat
-from pptx.enum.shapes import MSO_SHAPE_TYPE
+from pptx.enum.shapes import MSO_CONNECTOR_TYPE, MSO_SHAPE_TYPE
 from pptx.shapes.base import BaseShape
 from pptx.util import Emu, lazyproperty
 
@@ -217,6 +217,19 @@ class Connector(BaseShape):
                 cxnSp.flipV = True
                 cxnSp.y = new_y
                 cxnSp.cy = dy - cy
+
+    @property
+    def connector_type(self):
+        # <a:prstGeom prst="{prst}">
+        if self._element.spPr.prstGeom is None:
+            raise ValueError("Connector does not have a prstGeom element")
+        for type in iter(MSO_CONNECTOR_TYPE):
+            if type is MSO_CONNECTOR_TYPE.MIXED:
+                continue
+            type_identifier = MSO_CONNECTOR_TYPE.to_xml(type)
+            if 'prst="' + type_identifier in self._element.spPr.prstGeom.xml:
+                return type
+        raise ValueError("Connector does not have a effective connector type")
 
     def get_or_add_ln(self):
         """Helper method required by |LineFormat|."""

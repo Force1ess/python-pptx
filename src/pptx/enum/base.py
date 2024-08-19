@@ -29,6 +29,14 @@ class BaseEnum(int, enum.Enum):
         """The symbolic name and string value of this member, e.g. 'MIDDLE (3)'."""
         return f"{self.name} ({self.value})"
 
+    @classmethod
+    def from_value(cls, value: int):
+        """Return the enum member corresponding to the given integer value."""
+        for member in cls:
+            if member.value == value:
+                return member
+        raise ValueError(f"No enum member with value {value}")
+
 
 class BaseXmlEnum(int, enum.Enum):
     """Base class for Enums that also map XML attr values.

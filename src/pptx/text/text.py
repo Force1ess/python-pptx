@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Iterator, cast
-
+from lxml import etree
 from pptx.dml.fill import FillFormat
 from pptx.enum.dml import MSO_FILL
 from pptx.enum.lang import MSO_LANGUAGE_ID
@@ -307,7 +307,10 @@ class Font(object):
         """The |ColorFormat| instance that provides access to the color settings for this font."""
         if self.fill.type != MSO_FILL.SOLID:
             self.fill.solid()
-        return self.fill.fore_color
+        try:
+            return str(self.fill.fore_color.rgb)
+        except:
+            return None
 
     @lazyproperty
     def fill(self) -> FillFormat:
@@ -420,6 +423,27 @@ class Font(object):
         elif value is False:
             value = MSO_UNDERLINE.NONE
         self._element.u = value
+
+    def get_attrs(self):
+        return (
+            self.bold,
+            self.color,
+            self.italic,
+            self.name,
+            self.size.pt if self.size is not None else None,
+            self.underline,
+        )
+
+    def __hash__(self):
+        return hash(self.get_attrs())
+
+    def __eq__(self, other):
+        if not isinstance(other, Font):
+            return False
+        return self.get_attrs() == other.get_attrs()
+
+    def __repr__(self):
+        return f"Font: name={self.name}, size={self.size}"
 
 
 class _Hyperlink(Subshape):
@@ -630,6 +654,33 @@ class _Paragraph(Subshape):
         Causes the element to be added if not present.
         """
         return self._p.get_or_add_pPr()
+
+    @property
+    def bullet(self):
+        pPr = self._p.pPr
+        if pPr is None:
+            return None
+        return pPr.bullet
+
+    @bullet.setter
+    def bullet(self, value):
+        pPr = self._p.get_or_add_pPr()
+        if (
+            pPr.find(
+                "a:buFont",
+                namespaces={"a": "http://schemas.openxmlformats.org/drawingml/2006/main"},
+            )
+            is None
+        ):
+            buFont = etree.Element(
+                "{http://schemas.openxmlformats.org/drawingml/2006/main}buFont",
+                typeface="Wingdings",
+                pitchFamily="0",
+                charset="2",
+                panose="05000000000000000000",
+            )
+            pPr.insert(0, buFont)
+        pPr.bullet = value
 
 
 class _Run(Subshape):

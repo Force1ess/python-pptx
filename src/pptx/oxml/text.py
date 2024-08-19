@@ -26,6 +26,7 @@ from pptx.oxml.simpletypes import (
     ST_TextTypeface,
     ST_TextWrappingType,
     XsdBoolean,
+    XsdString,
 )
 from pptx.oxml.xmlchemy import (
     BaseOxmlElement,
@@ -245,7 +246,9 @@ class CT_TextBodyProperties(BaseOxmlElement):
         return None
 
     @autofit.setter
-    def autofit(self, value: MSO_AUTO_SIZE | None):
+    def autofit(self, value: MSO_AUTO_SIZE | None | int):
+        if isinstance(value, int):
+            value = MSO_AUTO_SIZE.from_value(value)
         if value is not None and value not in MSO_AUTO_SIZE:
             raise ValueError(
                 f"only None or a member of the MSO_AUTO_SIZE enumeration can be assigned to"
@@ -498,6 +501,12 @@ class CT_TextParagraphProperties(BaseOxmlElement):
     spcAft: CT_TextSpacing | None = ZeroOrOne(  # pyright: ignore[reportAssignmentType]
         "a:spcAft", successors=_tag_seq[3:]
     )
+    buNone: CT_TextNoBullet | None = ZeroOrOne(  # pyright: ignore[reportAssignmentType]
+        "a:buNone", successors=_tag_seq[11:]
+    )
+    buChar: CT_TextCharBullet | None = ZeroOrOne(  # pyright: ignore[reportAssignmentType]
+        "a:buChar", successors=_tag_seq[13:]
+    )
     defRPr: CT_TextCharacterProperties | None = ZeroOrOne(  # pyright: ignore[reportAssignmentType]
         "a:defRPr", successors=_tag_seq[16:]
     )
@@ -508,6 +517,31 @@ class CT_TextParagraphProperties(BaseOxmlElement):
         "algn", PP_PARAGRAPH_ALIGNMENT
     )  # pyright: ignore[reportAssignmentType]
     del _tag_seq
+
+    @property
+    def bullet(self):
+        buNone = self.buNone
+        buChar = self.buChar
+        if buNone is not None:
+            return None
+        if buChar is not None:
+            return buChar.char
+
+    @bullet.setter
+    def bullet(self, value):
+        self._remove_buNone()
+        self._remove_buChar()
+        if value is None:
+            return
+        if isinstance(value, bool):
+            if value:
+                buChar = self._add_buChar()
+                buChar.char = "\u2022"
+            else:
+                self._add_buNone()
+        else:
+            buChar = self._add_buChar()
+            buChar.char = value
 
     @property
     def line_spacing(self) -> float | Length | None:
@@ -616,3 +650,19 @@ class CT_TextSpacingPoint(BaseOxmlElement):
     val: Length = RequiredAttribute(  # pyright: ignore[reportAssignmentType]
         "val", ST_TextSpacingPoint
     )
+
+
+class CT_TextNoBullet(BaseOxmlElement):
+    """
+    <a:buNone> element, specifying that a paragraph should not be bulleted.
+    """
+
+    pass
+
+
+class CT_TextCharBullet(BaseOxmlElement):
+    """
+    <a:buChar> element, specifying that a paragraph should have a character bullet.
+    """
+
+    char = RequiredAttribute("char", XsdString)
