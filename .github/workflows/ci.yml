@@ -1,36 +1,95 @@
-name: ci
+name: Build Wheels
 
 on:
-  pull_request:
-    branches: [ master ]
   push:
-    branches:
-      - master
-      - develop
+  pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
-
   build:
-    runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
-        python-version: ["3.9", "3.10", "3.11", "3.12"]
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: ["3.12", "3.13"]
+    runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-      - name: Display Python version
-        run: python -c "import sys; print(sys.version)"
-      - name: Install test dependencies
+          cache: pip
+      - name: Install build backend
         run: |
-          pip install .
-          pip install -r requirements-test.txt
-      - name: Test with pytest
-        run: pytest --cov=pptx --cov-report term-missing tests
-      - name: Acceptance tests with behave
-        run: behave --stop
+          python -m pip install --upgrade pip
+          pip install build
+      - name: Build wheel
+        run: |
+          python -m build --wheel
+      - name: Upload wheel artifact (retained 2 days)
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheel-${{ matrix.os }}-py${{ matrix.python-version }}
+          path: dist/*.whl
+          retention-days: 2
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download all wheels
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+
+      # ✅ 按文件名去重，汇总到 upload/
+      - name: Dedupe wheels by filename
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p upload
+          declare -A seen
+          while IFS= read -r -d '' f; do
+            b="$(basename "$f")"
+            if [[ -z "${seen[$b]+x}" ]]; then
+              cp -f "$f" "upload/$b"
+              seen[$b]=1
+            else
+              echo "Skip duplicate: $b (from $f)"
+            fi
+          done < <(find dist -type f -name "*.whl" -print0)
+          echo "Final upload set:"
+          ls -l upload || true
+
+      - name: Generate release notes chunk
+        run: |
+          {
+            echo "### Build #${{ github.run_number }} ($(date -u +'%Y-%m-%d %H:%M:%S') UTC)"
+            echo
+            git log -1 --pretty=format:'- %h %s%n%b'
+            echo
+          } > release_body_chunk.md
+
+      - name: Create or update 'latest-whl' Release
+        uses: softprops/action-gh-release@v2
+        with:
+          token: ${{ github.token }}   # 内置 GITHUB_TOKEN
+          tag_name: latest-whl
+          name: latest-whl
+          draft: false
+          prerelease: true
+          make_latest: true
+          body_path: release_body_chunk.md
+          append_body: true
+          overwrite: true
+          fail_on_unmatched_files: false
+          files: |
+            upload/*.whl
