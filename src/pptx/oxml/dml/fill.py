@@ -22,6 +22,8 @@ from pptx.oxml.xmlchemy import (
 )
 
 
+
+
 class CT_Blip(BaseOxmlElement):
     """
     <a:blip> element
@@ -195,3 +197,16 @@ class CT_SolidColorFillProperties(BaseOxmlElement):
         ),
         successors=(),
     )
+
+# Add this code block to the bottom of pptx/oxml/dml/fill.py
+
+class _Fill(BaseOxmlElement):
+    """
+    An XML element corresponding to a fill property element like <a:solidFill>.
+
+    This is a helper class for lxml to resolve an ambiguity during object
+    creation, and is the object that is crashing. We are adding 'xFill=None'
+    to prevent the 'missing 1 required positional argument' error.
+    """
+    def __new__(cls, xFill=None):  # <--- THIS IS THE CRITICAL CHANGE
+        return BaseOxmlElement.__new__(cls)
